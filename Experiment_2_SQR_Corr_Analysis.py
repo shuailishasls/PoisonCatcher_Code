@@ -2,12 +2,13 @@ from pathlib import Path
 import pandas as pd
 import os
 import numpy as np
-from tqdm import tqdm
 from sklearn.cross_decomposition import CCA
 from statsmodels.regression.linear_model import OLS
 from statsmodels.tools.tools import add_constant
-import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
+import warnings
+
+# 忽略 RuntimeWarning
+warnings.filterwarnings('ignore', category=RuntimeWarning)
 
 
 # 核心分析类
@@ -36,7 +37,7 @@ class CorrelationAnalyzer:
 		disc_cols = self._get_group_cols(disc_base)
 		X = self._remove_last_column(self.df[disc_cols])
 		
-		pearson_corrs = X.corrwith(self.df[cont_col])
+		pearson_corrs = X.corrwith(self.df[cont_col], method='spearman')
 		weighted_mean = self._weighted_correlation(pearson_corrs)
 		
 		X_ols = add_constant(X)
@@ -116,7 +117,7 @@ def analyzer_corr(df, discrete_attrs):
 	return pd.DataFrame(results)
 
 
-def generate_corr_matrix(true_feature_columns, corr_df):
+def generate_corr_matrix(true_feature_columns, corr_df, discrete_attrs):
 	# 初始化全零矩阵
 	matrix = pd.DataFrame(np.zeros((len(true_feature_columns), len(true_feature_columns))),
 	                      index=true_feature_columns, columns=true_feature_columns)
@@ -153,106 +154,48 @@ def find_max_diff_row(attacked_matrix, history_clean_ds_matrix):
 	return sorted_row_sums.head(1)
 
 
-if __name__ == "__main__":
-	continue_attrs = ['temperature_celsius', 'humidity', 'cloud', 'visibility_km', 'uv_index',
-	                  'air_quality_Ozone', 'air_quality_Nitrogen_dioxide']  # 连续属性
-	discrete_attrs = ['wind_direction', 'air_quality_us-epa-index', 'air_quality_gb-defra-index']  # 离散属性
-	drop_column = ['attack_ratio', 'attacked_mode', 'Fault Tolerance']
+def Experiment_2_SQR_Corr_Analysis(continue_attrs, discrete_attrs, drop_column, clean_ds_sqr):
+	result_df = pd.DataFrame()
 	
-	clean_ds_sqr = pd.read_csv('./File/History_Clean_Dataset_SQR.csv')
-	clean_ds_sqr['date'] = pd.to_datetime(clean_ds_sqr['date'], format='%Y-%m-%d', errors='coerce').dt.date
-	
-	folders = ('./File/Attacked_Dataset/', './File/Attacked_Dataset_Result/')
-	file_sets = [set(os.listdir(folder)) for folder in folders]
-	unique_files = file_sets[0] - file_sets[1]
-	
-	for file in tqdm(unique_files):
-		experiment_result = []
-		
-		file_path = os.path.join(folders[0], file)
-		df = pd.read_csv(file_path)
+	for file in set(os.listdir('./File/Attacked_Dataset/')):
+		df = pd.read_csv(os.path.join('./File/Attacked_Dataset/', file))
 		df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d', errors='coerce').dt.date
 		df = df.fillna(0)
 		attacked_feature = os.path.splitext(os.path.basename(file))[0]
+		experiment_result = []
 		
 		for index, row in df.iterrows():
 			# 历史干净数据集SQR
-			clean_df_new = df[(df['attack_ratio'] == 0) & (df['attacked_mode'] == 'RPVA') & (df['date'] < row['date'])]
+			clean_df_new = df[
+				(df['attack_ratio'] == 0) & (df['attacked_mode'] == 'DIPA') & (df['date'] < row['date'])]
 			clean_df_new = pd.concat([clean_ds_sqr, clean_df_new.copy().drop(drop_column, axis=1)], axis=0,
 			                         ignore_index=True)
 			if not clean_df_new.empty:
 				history_clean_ds_sqr_corr = analyzer_corr(clean_df_new, discrete_attrs)
 			else:
 				history_clean_ds_sqr_corr = analyzer_corr(clean_ds_sqr, discrete_attrs)
-			history_clean_ds_matrix = generate_corr_matrix(continue_attrs + discrete_attrs, history_clean_ds_sqr_corr)
+			history_clean_ds_matrix = generate_corr_matrix(continue_attrs + discrete_attrs,
+			                                               history_clean_ds_sqr_corr, discrete_attrs)
 			
 			# 当前被攻击数据集SQR
 			current_new_attack_df = pd.DataFrame([row.copy().drop(drop_column)])
 			mixed_dataset = pd.concat([clean_df_new, current_new_attack_df], axis=0, ignore_index=True)
 			attacked_ds_sqr_corr = analyzer_corr(mixed_dataset, discrete_attrs)
-			attacked_matrix = generate_corr_matrix(continue_attrs + discrete_attrs, attacked_ds_sqr_corr)
+			attacked_matrix = generate_corr_matrix(continue_attrs + discrete_attrs, attacked_ds_sqr_corr,
+			                                       discrete_attrs)
 			
 			# 找出历史干净数据集和当前被攻击数据集相关性差异，并按差异大小排序
 			max_diff_row = find_max_diff_row(attacked_matrix, history_clean_ds_matrix)
-			successful_detection = 1 if max_diff_row.index[0] == attacked_feature else 0
-			experiment_result.append([row['attacked_mode'], row['attack_ratio'], row['date'], successful_detection])
+			if max_diff_row.index[0] == attacked_feature:
+				successful_detection = 1
+				bias = max_diff_row.values[0]
+			else:
+				successful_detection = 0
+				bias = 0
+			experiment_result.append([row['attacked_mode'], row['attack_ratio'], row['date'], attacked_feature,
+			                          successful_detection, bias])
 		
-		pd.DataFrame(experiment_result, columns=['attack_mode', 'attack_ratio', 'attack_time', 'detection']).to_csv(
-			f'./File/Attacked_Dataset_Result/{attacked_feature}.csv', index=False)
-	
-	# 读取所有CSV文件并合并数据
-	folders = ['./File/Attacked_Dataset_Result/']
-	file_list = [os.path.join(folders[-1], f) for f in os.listdir(folders[-1]) if f.endswith('.csv')]
-	
-	# 创建画布
-	fig = plt.figure(figsize=(24, 18))
-	fig.subplots_adjust(top=0.92, hspace=0.4, wspace=0.3)
-	plt.rcParams['figure.dpi'] = 1000  # 设置图片清晰度
-	
-	# 获取所有attack_mode类型
-	all_modes = []
-	for file in file_list:
-		all_modes.extend(pd.read_csv(file)['attack_mode'].unique())
-	attack_modes = sorted(list(set(all_modes)))
-	
-	# 创建颜色和标记映射
-	colors = ['red', 'green', 'blue', 'black']
-	markers = ['o', 's', '^', 'd']  # 圆形、正方形、三角形、菱形
-	style_map = {mode: {'color': colors[i % len(colors)], 'marker': markers[i % len(markers)]}
-	             for i, mode in enumerate(attack_modes)}
-	
-	# 绘制每个子图
-	for idx, file in enumerate(file_list, 1):
-		ax = fig.add_subplot(4, 5, idx)  # 5行4列布局
-		
-		df = pd.read_csv(file)
-		groups = df['attack_ratio'].diff().gt(0.02).cumsum()
-		# 按分组计算 attack_ratio 的均值并替换原数据
-		df['attack_ratio'] = round(df.groupby(groups)['attack_ratio'].transform('mean'), 3)
-		df_grouped = df.groupby(['attack_mode', 'attack_ratio'])['detection'].mean().reset_index()
-		
-		for mode in attack_modes:
-			mode_data = df_grouped[df_grouped['attack_mode'] == mode]
-			if not mode_data.empty:
-				ax.plot(mode_data['attack_ratio'], mode_data['detection'],
-				        **style_map[mode], linewidth=0.5)
-		
-		# 子图设置
-		title = os.path.splitext(os.path.basename(file))[0]
-		ax.set_title(title, fontsize=16, pad=8)
-		ax.set_xlabel('Attack Ratio', fontsize=16)
-		ax.set_ylabel('Success Rate of Detection', fontsize=16)
-		ax.tick_params(axis='both', which='major', labelsize=14)
-		ax.set_ylim(-0.1, 1.1)
-		ax.grid(True, alpha=0.3)
-	
-	# 创建统一图例
-	legend_elements = [Line2D([0], [0], marker=style_map[mode]['marker'], color=style_map[mode]['color'],
-	                          label=mode, markersize=8, linestyle='None') for mode in attack_modes]
-	
-	fig.legend(handles=legend_elements, loc='upper center', ncol=4, fontsize=16, title='Attack Modes',
-	           title_fontsize=16, frameon=True, bbox_to_anchor=(0.5, 1.05))
-	
-	plt.tight_layout()
-	plt.savefig('./File/PDF/Experiment_2_SQR_Corr_Analysis.pdf', format='pdf')
-	plt.show()
+		experiment_result_df = pd.DataFrame(experiment_result, columns=['attacked_mode', 'attack_ratio', 'date',
+		                                                                'attacked_feature', 'detection', 'bias'])
+		result_df = pd.concat([result_df, experiment_result_df], ignore_index=True)
+	return result_df

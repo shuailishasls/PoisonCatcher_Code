@@ -74,3 +74,34 @@ def calculate_features_statistics(waiting_attacked_dataset, discrete_attribute, 
 			statistics_dict[column] = grr_frequency_estimation(waiting_attacked_dataset[column], domain, epsilon)
 	return statistics_dict
 
+
+def calculate_ft(data, count, epsilon, confidence_level, discrete_attrs):
+	alpha = {}
+	
+	# 计算离散属性alpha
+	for i in discrete_attrs:
+		matching_columns = [col for col in data.columns if col.startswith(i)]
+		denominator = (np.exp(epsilon) - 1) * np.sqrt(np.pi * count * (1 - confidence_level))
+		numerator = 2 * (np.exp(epsilon) + len(matching_columns) - 2)
+		alpha[i] = numerator / denominator
+	
+	# 计算 laplace alpha
+	alpha_lap = np.sqrt(2) * 2 / (epsilon * np.sqrt(count * (1 - confidence_level)))
+	
+	# 更新 alpha 字典，将连续属性的 alpha 设置为 alpha_lap
+	alpha.update({col: alpha_lap for col in data.columns if col not in discrete_attrs})
+	
+	return pd.DataFrame.from_dict(alpha, orient='index')
+
+
+def compute_bias(discrete_attrs, origin_attack_bias):
+	origin_LDP_bias_result = pd.DataFrame()
+	# 计算离散数据的偏度
+	for attr in discrete_attrs:
+		matching_columns = [col for col in origin_attack_bias.columns if col.startswith(attr)]
+		if matching_columns:
+			origin_LDP_bias_result[attr] = origin_attack_bias[matching_columns].sum(axis=1) / 2  # 按行计算这些匹配列的和
+	for col in [col for col in origin_attack_bias.columns if  # 给出连续数据的偏度
+	            not any(col.startswith(attr) for attr in discrete_attrs)]:
+		origin_LDP_bias_result[col] = origin_attack_bias[col]
+	return origin_LDP_bias_result

@@ -1,26 +1,26 @@
-# import libraries
 import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 import plotly.express as px
+import Real_Data_Process as Real_Data_Process
 
-# Set color palette
 sns.set_palette("Set2")
-
-# Set the option to display the maximum number of column
 pd.set_option('display.max_columns', None)
-# pd.set_option('display.max_rows', None)
 
-# 读取数据
+discrete_attrs = ['condition_text', 'wind_direction', 'air_quality_us-epa-index', 'air_quality_gb-defra-index']
+continue_attrs = ['temperature_celsius', 'wind_kph', 'pressure_mb', 'precip_mm', 'humidity', 'cloud', 'uv_index',
+                  'air_quality_PM2.5', 'feels_like_celsius', 'visibility_km', 'gust_kph', 'air_quality_Carbon_Monoxide',
+                  'air_quality_Ozone', 'air_quality_PM10', 'air_quality_Nitrogen_dioxide',
+                  'air_quality_Sulphur_dioxide']
+
+Real_Data_Process.process_csv(discrete_attrs, './File/GlobalWeatherRepository.csv', 1, 1,
+                              continue_attrs + discrete_attrs)
+
 df = pd.read_csv("./File/Preprocessing_Data(non_LDP).csv")
 
 # Specify the columns to visualize
-selected_columns = ['temperature_celsius', 'wind_kph', 'pressure_mb', 'precip_mm', 'humidity', 'cloud',
-                    'feels_like_celsius', 'visibility_km', 'uv_index', 'gust_kph', 'air_quality_Carbon_Monoxide',
-                    'air_quality_Ozone', 'air_quality_Nitrogen_dioxide', 'air_quality_Sulphur_dioxide',
-                    'air_quality_PM2.5', 'air_quality_PM10', 'condition_text', 'wind_direction',
-                    'air_quality_us-epa-index', 'air_quality_gb-defra-index']
+selected_columns = continue_attrs + discrete_attrs
 
 # Create a figure for the subplots
 n_cols = 5
@@ -33,7 +33,7 @@ set2_palette = sns.color_palette("Set2", n_colors=len(selected_columns))
 
 # Loop through the selected columns and create plots
 for i, col in enumerate(selected_columns):
-	if pd.api.types.is_numeric_dtype(df[col]):
+	if col not in ['condition_text', 'wind_direction', 'air_quality_us-epa-index', 'air_quality_gb-defra-index']:
 		sns.histplot(df[col], ax=axes[i], bins=30, kde=True, color=set2_palette[i])
 		axes[i].set_xlabel(col)
 		axes[i].set_ylabel('Frequency')

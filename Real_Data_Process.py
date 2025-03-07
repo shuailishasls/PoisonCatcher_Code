@@ -14,6 +14,7 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from datetime import datetime, timedelta
 import datetime
+from sklearn.preprocessing import QuantileTransformer
 
 
 def group_data(df, time_instances):
@@ -85,8 +86,12 @@ def process_csv(disc_att, input_file, epsilon, time_instances, selected_attacked
 	
 	# 对不在 disc_att 列表中的列进行[-1,1]标准化处理
 	numerical_columns = [col for col in df_filtered.columns if col not in disc_att][2:]
-	scaler = MinMaxScaler(feature_range=(-1, 1))
 	df_filtered[numerical_columns] = df_filtered[numerical_columns].astype(float)
+
+	qt = QuantileTransformer(output_distribution='normal', random_state=0)
+	df_filtered.loc[:, numerical_columns] = qt.fit_transform(df_filtered[numerical_columns])
+	
+	scaler = MinMaxScaler(feature_range=(-1, 1))
 	df_filtered.loc[:, numerical_columns] = scaler.fit_transform(df_filtered[numerical_columns])
 	print('总日期数：', len(df_filtered['date'].value_counts()))
 	
@@ -96,6 +101,8 @@ def process_csv(disc_att, input_file, epsilon, time_instances, selected_attacked
 	# 将每个唯一的日期，数据保存为 CSV 文件
 	for date in df_filtered['date'].unique():
 		df_filtered[df_filtered['date'] == date].to_csv(f'./File/Divide_data_by_time(non_LDP)/{date}.csv', index=False)
+	
+	df_filtered.to_csv('./File/Preprocessing_Data(non_LDP).csv', index=False)
 	
 	# 数据LDP处理
 	for col in df_filtered.columns[2:]:

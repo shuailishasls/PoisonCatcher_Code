@@ -1,31 +1,9 @@
 import os
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 import Statistical as STATI
 import Attack_Simulation_Four as ASF
 import Real_Data_Process as Real_Data_Process
-import Attribute_Correlation_Detector as ACD
-from pprint import pprint
-
-
-def calculate_ft(data, count, epsilon, discrete_attrs):
-	alpha = {}
-	
-	# 计算离散属性alpha
-	for i in discrete_attrs:
-		matching_columns = [col for col in data.columns if col.startswith(i)]
-		denominator = (np.exp(epsilon) - 1) * np.sqrt(np.pi * count * (1 - 0.97))
-		numerator = 2 * (np.exp(epsilon) + len(matching_columns) - 2)
-		alpha[i] = numerator / denominator
-	
-	# 计算 laplace alpha
-	alpha_lap = np.sqrt(2) * 2 / (epsilon * np.sqrt(count * (1 - 0.82)))
-	
-	# 更新 alpha 字典，将连续属性的 alpha 设置为 alpha_lap
-	alpha.update({col: alpha_lap for col in data.columns if col not in discrete_attrs})
-	
-	return pd.DataFrame.from_dict(alpha, orient='index')
 
 
 def read_files_in_folder(folder_path):
@@ -81,7 +59,7 @@ def flatten_dict(data, discrete_attr):
 	return result_df
 
 
-def generate_attacked_df(exp, times, date_threshold, confidence_level, epsilon, discrete_attrs):
+def generate_attacked_df(exp, times, date_threshold, confidence_level, epsilon, discrete_attrs, continue_attrs):
 	"""
 	根据原始数据集生成攻击数据集
 	:param exp: 生成实验几的结果
@@ -90,25 +68,20 @@ def generate_attacked_df(exp, times, date_threshold, confidence_level, epsilon, 
 	:param confidence_level: 置信概率
 	:param epsilon: 隐私预算
 	"""
-	country_attacked_ratio = (np.arange(0, 31, 3).astype(float) / 100).tolist()  # 被攻击的国家比例
-	attacked_modes = ['RPVA', 'RIA', 'RPA', 'MGA']  # 攻击者的攻击手段
+	country_attacked_ratio = (np.arange(0, 52, 3).astype(float) / 100).tolist()  # 被攻击的国家比例
+	attacked_modes = ['DIPA', 'DPPA', 'ROPA']  # 攻击者的攻击手段
 	attack_countries, sqr_accuracy, LDP_sqr, origin_sqr, attack_sqr = [], pd.DataFrame(), {}, {}, {}
 	
-	if exp == 0:
-		discrete_attrs = ['condition_text', 'wind_direction', 'air_quality_us-epa-index', 'air_quality_gb-defra-index']
-		selected_attacked_features = ['temperature_celsius', 'wind_kph', 'pressure_mb', 'precip_mm', 'humidity',
-		                              'cloud', 'feels_like_celsius', 'visibility_km', 'uv_index', 'gust_kph',
-		                              'air_quality_Carbon_Monoxide', 'air_quality_Ozone', 'air_quality_PM10',
-		                              'air_quality_Nitrogen_dioxide', 'air_quality_Sulphur_dioxide',
-		                              'air_quality_PM2.5'] + discrete_attrs
+	if exp == 1 or exp == 2:
+		selected_attacked_features = continue_attrs + discrete_attrs
 	else:
-		selected_attacked_features = ['temperature_celsius', 'humidity', 'visibility_km', 'uv_index', 'cloud',
-		                              'air_quality_Ozone', 'air_quality_Nitrogen_dioxide'] + discrete_attrs
+		selected_attacked_features = continue_attrs + discrete_attrs
 	
 	print(f'数据预处理ing...')
 	Real_Data_Process.process_csv(discrete_attrs, './File/GlobalWeatherRepository.csv', epsilon, times,
 	                              selected_attacked_features)
 	processed_data = pd.read_csv("./File/Preprocessing_Data.csv")  # 读取预处理数据
+	processed_data_non_LDP = pd.read_csv("./File/Preprocessing_Data(non_LDP).csv")  # 读取预处理数据
 	dfs_LDP_dict = read_files_in_folder('./File/Divide_data_by_time')  # 按日读取文件夹的内容存成一个dataframe
 	dfs_dict = read_files_in_folder('./File/Divide_data_by_time(non_LDP)')
 	
@@ -147,80 +120,74 @@ def generate_attacked_df(exp, times, date_threshold, confidence_level, epsilon, 
 	origin_sqr.to_csv(f'./File/History_Clean_origin_SQR.csv', index=False)
 	
 	# 计算原始数据与LDP处理后的数据的偏差
-	origin_LDP_bias = (LDP_sqr.iloc[:, 1:] - origin_sqr.iloc[:, 1:]).abs()
-	origin_LDP_bias_result = pd.DataFrame()
-	for attr in discrete_attrs:
-		matching_columns = [col for col in origin_LDP_bias.columns if col.startswith(attr)]
-		if matching_columns:
-			origin_LDP_bias_result[attr] = origin_LDP_bias[matching_columns].sum(axis=1)  # 按行计算这些匹配列的和
-	for col in [col for col in origin_LDP_bias.columns if not any(col.startswith(attr) for attr in discrete_attrs)]:
-		origin_LDP_bias_result[col] = origin_LDP_bias[col]
+	origin_LDP_bias_result = STATI.compute_bias(discrete_attrs, (LDP_sqr.iloc[:, 1:] - origin_sqr.iloc[:, 1:]).abs())
 	
 	# 计算基线数据集中每个属性的容错阈值
-	alpha_df = calculate_ft(origin_sqr.iloc[:, 1:], len(dfs_dict[next(iter(dfs_dict))]), epsilon, discrete_attrs).T
+	alpha_df = STATI.calculate_ft(origin_sqr.iloc[:, 1:], len(dfs_dict[next(iter(dfs_dict))]), epsilon,
+	                              confidence_level,
+	                              discrete_attrs).T
 	alpha_df.to_csv(f'./File/alpha_df.csv', index=False)
 	# 判断偏差是否在阈值范围内
 	bias_out_FT_df = origin_LDP_bias_result.copy()
 	for col in origin_LDP_bias_result.columns:
 		bias_out_FT_df[col] = (origin_LDP_bias_result[col] > alpha_df[col].values[0]).astype(int)
-	print('\n原始数据与经过LDP处理后的数据偏差超过阈值概率：')
-	pprint({col: f"{round(bias_out_FT_df[col].sum() / len(bias_out_FT_df), 2):.2f}" for col in bias_out_FT_df.columns})
-
+		if bias_out_FT_df[col].sum() != 0:
+			print(col)
+	
 	# ------------------------------------开始攻击------------------------------------
-	for feature in tqdm(selected_attacked_features):  # 确定攻击特征
-		print(feature)
+	for feature in selected_attacked_features:  # 确定攻击特征
 		new_LDP_sqr, attack_alpha = pd.DataFrame(), pd.DataFrame()  # | 攻击理论阈值
 		for attacked_mode in attacked_modes:  # 确定攻击模式
 			for i in range(len(country_attacked_ratio)):  # 确定攻击程度
 				real_attack_ratio_list, temp_LDP_sqr = [], pd.DataFrame()
 				for date_obj in current_ds:  # 确定攻击时间
-					wait_attack_ds = dfs_LDP_dict[date_obj.strftime("%Y-%m-%d")].copy()  # 被LDP处理后的数据
+					current_df = dfs_LDP_dict[date_obj.strftime("%Y-%m-%d")]
+					ture_df = dfs_dict[date_obj.strftime("%Y-%m-%d")].copy()
+					wait_attack_ds = current_df.copy()  # 被LDP处理后的数据
 					wait_attack_ds['attacked'] = 0
 					
 					for user in attack_countries[i]:  # 定位被攻击的国家
 						origin_data = wait_attack_ds.loc[wait_attack_ds['country'] == user, feature].to_list()
 						
 						if feature not in discrete_attrs:
-							if attacked_mode == 'RPVA':  # 输出攻击
-								domain = [wait_attack_ds.loc[:, feature].min(), wait_attack_ds.loc[:, feature].max()]
-								attacked_value = ASF.RPVA('Laplace', domain, origin_data)
+							if attacked_mode == 'ROPA':  # 输出攻击
+								attacked_value = ASF.ROPA('Laplace', [current_df.loc[:, feature].min(),
+								                                      current_df.loc[:, feature].max()], origin_data)
 							
-							elif attacked_mode == 'RIA':  # 输入攻击
-								origin_data_nLDP = dfs_dict[date_obj.strftime("%Y-%m-%d")].copy().loc[
-									wait_attack_ds['country'] == user, feature].to_list()
-								attacked_value = ASF.RIA('Laplace', [min(origin_data_nLDP), max(origin_data_nLDP)], origin_data, epsilon)
-
-							elif attacked_mode == 'RPA':  # 规则攻击
-								origin_dataset = dfs_dict[date_obj.strftime("%Y-%m-%d")].copy()
-								true_value = origin_dataset.loc[wait_attack_ds['country'] == user, feature].to_list()
-								attacked_value = ASF.RPA(true_value, origin_data, 'Laplace')
+							elif attacked_mode == 'DIPA':  # 输入攻击
+								ture_df_copy = ture_df.loc[processed_data['country'] == user, feature].to_list()
+								ture_domain = processed_data_non_LDP.loc[processed_data_non_LDP['country'] == user, feature]
+								attacked_value = ASF.DIPA('Laplace', [min(ture_domain), max(ture_domain)],
+								                          origin_data, epsilon, ture_df_copy)
+							
+							elif attacked_mode == 'DPPA':  # 规则攻击
+								attacked_value = ASF.DPPA(
+									ture_df.loc[wait_attack_ds['country'] == user, feature].to_list(),
+									origin_data, 'Laplace')
 							
 							else:  # 最大增益攻击
-								target_item = STATI.laplace_mean_estimation(wait_attack_ds[feature])
-								attacked_value = ASF.MGA(target_item, 'Laplace', origin_data, epsilon=epsilon)
+								attacked_value = ASF.SMGPA(STATI.laplace_mean_estimation(processed_data[feature]),
+								                         'Laplace', origin_data, epsilon=epsilon)
 						
 						else:
-							if attacked_mode == 'RPVA':
-								attacked_value = ASF.RPVA('GRR', processed_data[feature].unique().tolist(), origin_data)
+							domain = processed_data[feature].value_counts().sort_values(ascending=False).index.tolist()
 							
-							elif attacked_mode == 'RIA':
-								domain = processed_data[feature].unique().tolist()
-								origin_data_nLDP = dfs_dict[date_obj.strftime("%Y-%m-%d")].copy().loc[
-									wait_attack_ds['country'] == user, feature].to_list()
-								attacked_value = ASF.RIA('GRR', domain, origin_data, epsilon, list(set(origin_data_nLDP)))
+							if attacked_mode == 'ROPA':  # 输出攻击
+								attacked_value = ASF.ROPA('GRR', domain, origin_data)
 							
-							elif attacked_mode == 'RPA':
-								domain = processed_data.loc[
-									processed_data['country'] == user, feature].unique().tolist()
-								true_value = dfs_dict[date_obj.strftime("%Y-%m-%d")].copy().loc[
-									wait_attack_ds['country'] == user, feature].to_list()
-								attacked_value = ASF.RPA(true_value, origin_data, 'GRR', domain)
+							elif attacked_mode == 'DIPA':  # 输入攻击
+								ture_df_copy = ture_df.loc[processed_data['country'] == user, feature].copy()
+								attacked_value = ASF.DIPA('GRR', domain, origin_data, epsilon, ture_df_copy)
 							
-							else:
-								domain = processed_data[feature].unique().tolist()
-								target_item = STATI.grr_frequency_estimation(wait_attack_ds[feature], domain, epsilon)
-								attacked_value = ASF.MGA(max(target_item, key=target_item.get), 'GRR',
-								                         origin_data, domain, epsilon)
+							elif attacked_mode == 'DPPA':  # 规则攻击
+								true_value = ture_df.loc[wait_attack_ds['country'] == user, feature].to_list()
+								attacked_value = ASF.DPPA(true_value, origin_data, 'GRR', domain)
+							
+							else:  # 最大增益攻击
+								target_item = STATI.grr_frequency_estimation(processed_data[feature], domain, epsilon)
+								attacked_value = ASF.SMGPA(max(target_item, key=target_item.get), 'GRR',
+								                           origin_data, domain, epsilon)
+						
 						wait_attack_ds.loc[wait_attack_ds['country'] == user, feature] = attacked_value
 						wait_attack_ds.loc[wait_attack_ds['country'] == user, 'attacked'] = 1
 					

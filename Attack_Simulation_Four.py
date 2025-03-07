@@ -3,9 +3,74 @@ import random
 import Real_Data_Process as RDP
 
 
-def RPVA(ldp_protocol, domain, origin_data):
+def DIPA(ldp_protocol, domain, origin_LDP_data, epsilon, ture_df_copy):
 	"""
-	Implements the Random Perturbed-value Attack (RPVA).
+	Deliberate Input-Poisoning Attack
+	Args:
+		domain (list): The domain of the feature data (discrete or continuous).
+		ldp_protocol (str): 'GRR' for discrete data, 'Laplace' for continuous data.
+		origin_LDP_data (list): the value of origin data with LDP but unattacked in current time
+		epsilon (float): Privacy budget for Laplace mechanism.
+		input_domain (list): domain list of all user input data (LDP)
+		bias_range (float): the bias range of attack
+	Returns:
+		The perturbed value
+	"""
+	disturb_value = []
+	if ldp_protocol == 'GRR':
+		# 找出满足个人域中离频数最高点最远的元素
+		user_domain = ture_df_copy.unique().tolist()
+		attack_result = max([d for d in user_domain if d in domain], key=lambda x: domain.index(x))
+		for i, _ in enumerate(ture_df_copy):
+			while True:
+				temp_data = RDP.grr_mechanism(attack_result, domain, epsilon)
+				if temp_data != origin_LDP_data[i]:
+					disturb_value.append(temp_data)
+					break
+		return disturb_value
+	
+	else:
+		while True:
+			for _ in range(len(ture_df_copy)):
+				disturb_value.append(RDP.laplace_mechanism(domain[0], epsilon))
+			return disturb_value
+
+
+def DPPA(true_value, origin_data, ldp_protocol, domain=None):
+	"""
+	Deliberate Parameter-Poisoning Attack
+	Args:
+		true_value (list): True value
+		ldp_protocol (str): 'GRR' or 'Laplace'.
+		origin_data (list): the value of origin data
+		domain (list): The domain of the data (discrete or continuous).
+	Returns:
+		dict: Modified parameters.
+	"""
+	
+	random_numbers = [random.randint(1, 1000) for _ in range(len(true_value))]
+	epsilon_list = [num / sum(random_numbers) * 32 for num in random_numbers]
+	disturb_value = []
+
+	if ldp_protocol == 'GRR':
+		for i, item in enumerate(origin_data):
+			while True:
+				temp_data = RDP.grr_mechanism(true_value[i], domain, epsilon_list[i])
+				if temp_data != item:  # 保证攻击结果
+					disturb_value.append(temp_data)
+					break
+		return disturb_value
+	else:
+		while True:
+			for i, item in enumerate(true_value):
+				temp_data = RDP.laplace_mechanism(item, epsilon_list[i])
+				disturb_value.append(temp_data)
+			return disturb_value
+
+
+def ROPA(ldp_protocol, domain, origin_data):
+	"""
+	Randomized Output-Poisoning Attack
 	Args:
 		ldp_protocol (str): 'GRR' for discrete data, 'Laplace' for continuous data.
 		domain (list): The domain of the data (discrete or continuous).
@@ -25,69 +90,10 @@ def RPVA(ldp_protocol, domain, origin_data):
 	else:
 		while True:
 			disturb_value = [random.uniform(domain[0], domain[1]) for _ in origin_data]
-			if all(item not in origin_data for item in disturb_value):
-				return disturb_value
+			return disturb_value
 
 
-def RIA(ldp_protocol, domain, origin_data, epsilon=None, input_domain=None):
-	"""
-	Implements the Random Item Attack (RIA).
-	Args:
-		domain (list): The domain of the data (discrete or continuous).
-		ldp_protocol (str): 'GRR' for discrete data, 'Laplace' for continuous data.
-		origin_data (list): the value of origin data with LDP but unattacked
-		epsilon (float): Privacy budget for Laplace mechanism.
-	Returns:
-		The perturbed value after RIA.
-	"""
-	if ldp_protocol == 'GRR':
-		disturb_value = []
-		for i, item in enumerate(origin_data):
-			while True:
-				temp_domain = input_domain.copy()
-				if item in temp_domain and len(temp_domain) != 1:
-					temp_domain.remove(origin_data[i])  # 保证输入数据不一样
-				temp_data = RDP.grr_mechanism(random.choice(temp_domain), domain, epsilon)
-				if temp_data != item:
-					disturb_value.append(temp_data)
-					break
-		return disturb_value
-	else:
-		while True:
-			result_data = [RDP.laplace_mechanism(random.uniform(domain[0], domain[1]), epsilon) for _ in origin_data]
-			if all(item not in origin_data for item in result_data):
-				return result_data
-
-
-def RPA(true_value, origin_data, ldp_protocol, domain=None):
-	"""
-	Implements the Random Parameter Attack (RPA) by altering LDP parameters.
-	Args:
-		true_value (list): True value
-		ldp_protocol (str): 'GRR' or 'Laplace'.
-		origin_data (list): the value of origin data
-		domain (list): The domain of the data (discrete or continuous).
-	Returns:
-		dict: Modified parameters.
-	"""
-	epsilon = round(random.uniform(0.1, 1), 3)  # Randomly adjust epsilon
-	if ldp_protocol == 'GRR':
-		disturb_value = []
-		for i, item in enumerate(origin_data):
-			while True:
-				temp_data = RDP.grr_mechanism(true_value[i], domain, epsilon)
-				if temp_data != item:  # 保证攻击结果
-					disturb_value.append(temp_data)
-					break
-		return disturb_value
-	else:
-		while True:
-			attacked_values = [RDP.laplace_mechanism(i, epsilon) for i in true_value]
-			if all(item not in origin_data for item in attacked_values):
-				return attacked_values
-
-
-def MGA(target_item, ldp_protocol, origin_data, domain=None, epsilon=None):
+def SMGPA(target_item, ldp_protocol, origin_data, domain=None, epsilon=None):
 	"""
 	Implements the Maximal Gain Attack (MGA).
 	Args:
@@ -109,5 +115,4 @@ def MGA(target_item, ldp_protocol, origin_data, domain=None, epsilon=None):
 	else:
 		while True:
 			attacked_values = [RDP.laplace_mechanism(target_item, epsilon) for _ in origin_data]
-			if all(value not in origin_data for value in attacked_values):
-				return attacked_values
+			return attacked_values
