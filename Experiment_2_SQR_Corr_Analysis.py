@@ -6,6 +6,7 @@ from sklearn.cross_decomposition import CCA
 from statsmodels.regression.linear_model import OLS
 from statsmodels.tools.tools import add_constant
 import warnings
+from Statistic_In_Experiment import bootstrap_confidence_interval_df
 
 # 忽略 RuntimeWarning
 warnings.filterwarnings('ignore', category=RuntimeWarning)
@@ -148,54 +149,99 @@ def find_max_diff_row(attacked_matrix, history_clean_ds_matrix):
 	返回:
 	pd.Series: 包含前 1 个最大差值的 Series，索引为 (index, feature) 元组
 	"""
-	abs_diff = (attacked_matrix - history_clean_ds_matrix).abs()  # 计算对应元素差值的绝对值
-	row_sums = abs_diff.sum(axis=1)  # 按行求和
+	row_sums = (attacked_matrix - history_clean_ds_matrix).abs().sum(axis=1)  # 按行求和
 	sorted_row_sums = row_sums.sort_values(ascending=False)  # 对行和进行排序（降序）
-	return sorted_row_sums.head(1)
+	diff_row_sums = pd.DataFrame([row_sums.values.flatten()], columns=row_sums.index)
+	return diff_row_sums, sorted_row_sums
 
 
-def Experiment_2_SQR_Corr_Analysis(continue_attrs, discrete_attrs, drop_column, clean_ds_sqr):
-	result_df = pd.DataFrame()
+def compute_dis_with_ci(max_diff_row, confidence_intervals):
+	# 计算每个值与 lower_bound 和 upper_bound 的距离
+	distance_dict = {}
+	for col in max_diff_row.columns:
+		value = max_diff_row[col].values[0]
+		if confidence_intervals.loc[col, 'lower_bound'] <= value <= confidence_intervals.loc[col, 'upper_bound']:
+			min_distance = 0
+		else:
+			lower_distance = abs(value - confidence_intervals.loc[col, 'lower_bound'])
+			upper_distance = abs(value - confidence_intervals.loc[col, 'upper_bound'])
+			min_distance = min(lower_distance, upper_distance)
+		distance_dict[col] = min_distance
 	
-	for file in set(os.listdir('./File/Attacked_Dataset/')):
+	# 将结果转换为 DataFrame
+	distance_df = pd.DataFrame.from_dict(distance_dict, orient='index', columns=['distance'])
+	
+	# 从大到小排序
+	sorted_distance_df = distance_df.sort_values(by='distance', ascending=False)
+	return sorted_distance_df.index[0]
+
+
+def Experiment_2_SQR_Corr_Analysis(continue_attrs, discrete_attrs, drop_column, clean_ds_sqr, confidence_level):
+	result_df, diff_clean_result, diff_clean_ci = pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+	
+	# 基线数据提取
+	df = pd.read_csv('./File/Attacked_Dataset/humidity.csv')
+	filtered_rows = df[(df['attack_ratio'] == 0) & (df['attacked_mode'] == 'DIPA')]
+	
+	history_clean_ds_sqr_corr = analyzer_corr(clean_ds_sqr, discrete_attrs)
+	history_clean_ds_matrix = generate_corr_matrix(continue_attrs + discrete_attrs, history_clean_ds_sqr_corr, discrete_attrs)
+	
+	for _, row in filtered_rows.iterrows():
+		current_new_attack_df = pd.DataFrame([row.copy().drop(drop_column)])
+		mixed_dataset = pd.concat([clean_ds_sqr, current_new_attack_df], axis=0, ignore_index=True)
+		attacked_ds_sqr_corr = analyzer_corr(mixed_dataset, discrete_attrs)
+		attacked_matrix = generate_corr_matrix(continue_attrs + discrete_attrs, attacked_ds_sqr_corr,
+		                                       discrete_attrs)
+		# 找出历史干净数据集和当前被攻击数据集相关性差异
+		max_diff_row, _ = find_max_diff_row(attacked_matrix, history_clean_ds_matrix)
+		diff_clean_ci = pd.concat([diff_clean_ci, max_diff_row], ignore_index=True)
+	
+	# 按列计算置信区间——基线
+	confidence_intervals = bootstrap_confidence_interval_df(diff_clean_ci, confidence_level)
+	
+	# -----相关性判断-----
+	for i, file in enumerate(set(os.listdir('./File/Attacked_Dataset/'))):
 		df = pd.read_csv(os.path.join('./File/Attacked_Dataset/', file))
 		df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d', errors='coerce').dt.date
 		df = df.fillna(0)
+		df = df[df['attack_ratio'] != 0]
 		attacked_feature = os.path.splitext(os.path.basename(file))[0]
-		experiment_result = []
 		
 		for index, row in df.iterrows():
 			# 历史干净数据集SQR
-			clean_df_new = df[
-				(df['attack_ratio'] == 0) & (df['attacked_mode'] == 'DIPA') & (df['date'] < row['date'])]
-			clean_df_new = pd.concat([clean_ds_sqr, clean_df_new.copy().drop(drop_column, axis=1)], axis=0,
-			                         ignore_index=True)
-			if not clean_df_new.empty:
-				history_clean_ds_sqr_corr = analyzer_corr(clean_df_new, discrete_attrs)
-			else:
-				history_clean_ds_sqr_corr = analyzer_corr(clean_ds_sqr, discrete_attrs)
-			history_clean_ds_matrix = generate_corr_matrix(continue_attrs + discrete_attrs,
-			                                               history_clean_ds_sqr_corr, discrete_attrs)
+			clean_df_new = df[(df['attack_ratio'] == 0) & (df['attacked_mode'] == 'DIPA') & (df['date'] < row['date'])]
+			clean_df_new = pd.concat([clean_ds_sqr, clean_df_new.copy().drop(drop_column, axis=1)],
+			                         axis=0, ignore_index=True)
 			
 			# 当前被攻击数据集SQR
 			current_new_attack_df = pd.DataFrame([row.copy().drop(drop_column)])
-			mixed_dataset = pd.concat([clean_df_new, current_new_attack_df], axis=0, ignore_index=True)
-			attacked_ds_sqr_corr = analyzer_corr(mixed_dataset, discrete_attrs)
-			attacked_matrix = generate_corr_matrix(continue_attrs + discrete_attrs, attacked_ds_sqr_corr,
-			                                       discrete_attrs)
 			
-			# 找出历史干净数据集和当前被攻击数据集相关性差异，并按差异大小排序
-			max_diff_row = find_max_diff_row(attacked_matrix, history_clean_ds_matrix)
-			if max_diff_row.index[0] == attacked_feature:
-				successful_detection = 1
-				bias = max_diff_row.values[0]
+			# 相关性分析
+			if not clean_df_new.empty:
+				history_clean_ds_sqr_corr = analyzer_corr(clean_df_new, discrete_attrs)
+				mixed_dataset = pd.concat([clean_df_new, current_new_attack_df], axis=0, ignore_index=True)
+
 			else:
-				successful_detection = 0
-				bias = 0
-			experiment_result.append([row['attacked_mode'], row['attack_ratio'], row['date'], attacked_feature,
-			                          successful_detection, bias])
+				history_clean_ds_sqr_corr = analyzer_corr(clean_ds_sqr, discrete_attrs)
+				mixed_dataset = pd.concat([clean_ds_sqr, current_new_attack_df], axis=0, ignore_index=True)
+			
+			# 生成相关性矩阵
+			history_clean_ds_matrix = generate_corr_matrix(continue_attrs + discrete_attrs,
+			                                               history_clean_ds_sqr_corr, discrete_attrs)
+			
+			attacked_ds_sqr_corr = analyzer_corr(mixed_dataset, discrete_attrs)
+			attacked_matrix = generate_corr_matrix(continue_attrs + discrete_attrs, attacked_ds_sqr_corr, discrete_attrs)
+
+			# 找出历史干净数据集和当前被攻击数据集相关性差异
+			max_diff_row, sorted_row = find_max_diff_row(attacked_matrix, history_clean_ds_matrix)
+			# if attacked_feature in discrete_attrs:
+			success = int(compute_dis_with_ci(max_diff_row, confidence_intervals) == attacked_feature or sorted_row.index[0] == attacked_feature)
+			# else:
+			# 	success = int(sorted_row.index[0] == attacked_feature)
+			max_diff_result = pd.DataFrame({'successful_detection': [success], 'attacked_mode': [row['attacked_mode']],
+			                                'attack_ratio': [row['attack_ratio']], 'date': [row['date']],
+			                                'attacked_feature': [attacked_feature]})
 		
-		experiment_result_df = pd.DataFrame(experiment_result, columns=['attacked_mode', 'attack_ratio', 'date',
-		                                                                'attacked_feature', 'detection', 'bias'])
-		result_df = pd.concat([result_df, experiment_result_df], ignore_index=True)
-	return result_df
+			diff_clean_result = pd.concat([diff_clean_result, max_diff_result], ignore_index=True)
+
+	return diff_clean_result

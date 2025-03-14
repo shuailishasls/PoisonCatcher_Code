@@ -3,19 +3,12 @@ import pandas as pd
 from scipy import stats
 
 
-# 计算置信区间
-def calculate_ci(g):
-	if len(g) < 2: return np.nan, np.nan
-	ci = stats.t.interval(0.95, len(g) - 1, loc=np.mean(g), scale=stats.sem(g))
-	return pd.Series({'ci_low': ci[0], 'ci_high': ci[1]})
-
-
 def calculate_f2(group):
 	"""计算分组的F2分数"""
 	# 真实标签：attack_ratio > 0表示被攻击
 	y_true = (group['attack_ratio'] > 0).astype(int)
 	# 预测标签：detected列（0表示未检测到，1表示检测到）
-	y_pred = group['detection'].astype(int)
+	y_pred = group['successful_detection'].astype(int)
 	
 	# 计算混淆矩阵
 	tp = ((y_true == 1) & (y_pred == 1)).sum()
@@ -29,3 +22,34 @@ def calculate_f2(group):
 	# 计算F2分数（beta=2，召回率权重是精确率的2倍）
 	f2 = (5 * precision * recall) / (4 * precision + recall) if (4 * precision + recall) != 0 else 0
 	return f2
+
+
+def bootstrap_confidence_interval_df(df, confidence_level=0.95, num_bootstrap_samples=1000):
+	"""
+	运用自助法计算 DataFrame 每列的置信区间，结果存于 DataFrame 中。
+
+	参数:
+	df (pandas.DataFrame): 输入的 DataFrame。
+	confidence_level (float): 置信水平，默认值为 0.95。
+	num_bootstrap_samples (int): 自助采样的次数，默认值为 1000。
+
+	返回:
+	pandas.DataFrame: 包含每列置信区间的 DataFrame，索引为 'lower_bound' 和 'upper_bound'。
+	"""
+	result = {}
+	for col in df.columns:
+		data = df[col].values
+		bootstrap_means = []
+		for _ in range(num_bootstrap_samples):
+			bootstrap_sample = np.random.choice(data, size=len(data), replace=True)
+			bootstrap_mean = np.mean(bootstrap_sample)
+			bootstrap_means.append(bootstrap_mean)
+		
+		alpha = 1 - confidence_level
+		lower_percentile = alpha / 2 * 100
+		upper_percentile = (1 - alpha / 2) * 100
+		lower_bound = np.percentile(bootstrap_means, lower_percentile)
+		upper_bound = np.percentile(bootstrap_means, upper_percentile)
+		result[col] = [lower_bound, upper_bound]
+	
+	return pd.DataFrame(result, index=['lower_bound', 'upper_bound']).T
