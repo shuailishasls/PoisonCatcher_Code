@@ -49,7 +49,7 @@ def DPPA(true_value, origin_data, ldp_protocol, domain=None):
 	"""
 	
 	random_numbers = [random.randint(1, 1000) for _ in range(len(true_value))]
-	epsilon_list = [num / sum(random_numbers) * 32 for num in random_numbers]
+	epsilon_list = [num / sum(random_numbers) * len(true_value) for num in random_numbers]
 	disturb_value = []
 
 	if ldp_protocol == 'GRR':
