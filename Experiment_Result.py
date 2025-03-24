@@ -223,26 +223,27 @@ if __name__ == "__main__":
 		result_df_temp3_1 = Experiment_3_SQR_Stability_Analysis(result_df_bias_1)
 		result_df_temp3_2 = Experiment_3_SQR_Stability_Analysis(result_df_bias_2)
 		result_df_3 = pd.concat([result_df_3, result_df_temp3_1, result_df_temp3_2], ignore_index=True)
-		
-		result_df_4 = pd.concat([result_df_3, result_df_bias_2, result_df_bias_1], ignore_index=True)
+
+		result_df_4 = pd.concat([result_df_4, result_df_bias_2, result_df_bias_1], ignore_index=True)
 
 	result_df_1.to_csv(f'./File/Experiment_1_SQR_Bias_In_Attack_Ratio_Change.csv', index=False)
 	result_df_2.to_csv(f'./File/Experiment_2_SQR_Corr_Analysis.csv', index=False)
 	result_df_3.to_csv(f'./File/Experiment_3_SQR_Stability_Analysis.csv', index=False)
 	result_df_4.to_csv(f'./File/Experiment_4_Ratio_Estimates.csv', index=False)
 
-	# result_df_1 = pd.read_csv(f'./File/Experiment_1_SQR_Bias_In_Attack_Ratio_Change.csv')
-	# result_df_2 = pd.read_csv(f'./File/Experiment_2_SQR_Corr_Analysis.csv')
-	# result_df_3 = pd.read_csv(f'./File/Experiment_3_SQR_Stability_Analysis.csv')
+	result_df_1 = pd.read_csv(f'./File/Experiment_1_SQR_Bias_In_Attack_Ratio_Change.csv')
+	result_df_2 = pd.read_csv(f'./File/Experiment_2_SQR_Corr_Analysis.csv')
+	result_df_3 = pd.read_csv(f'./File/Experiment_3_SQR_Stability_Analysis.csv')
+	result_df_4 = pd.read_csv(f'./File/Experiment_4_Ratio_Estimates.csv')
 
-	colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'tab:orange', 'tab:purple', 'tab:brown']  # 定义 10 种不同的颜色
-	markers = ['o', 's', '^', 'D', 'v', '*', 'p', 'h', '8', 'x']  # 定义 10 种不同的标记
-	style_map = {feat: {'color': colors[i % len(colors)], 'marker': markers[i % len(markers)], 'linestyle': '-'}
-	             for i, feat in enumerate(sorted(result_df_1['attacked_feature'].unique()))}
+	# colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'tab:orange', 'tab:purple', 'tab:brown']  # 定义 10 种不同的颜色
+	# markers = ['o', 's', '^', 'D', 'v', '*', 'p', 'h', '8', 'x']  # 定义 10 种不同的标记
+	# style_map = {feat: {'color': colors[i % len(colors)], 'marker': markers[i % len(markers)], 'linestyle': '-'}
+	#              for i, feat in enumerate(sorted(result_df_1['attacked_feature'].unique()))}
 
-	experiment_1_draw_picture(result_df_1, style_map, './File/PDF/Experiment_1_F2_Score_vs_Attack_Ratio.pdf')  # 实验1绘图
-	experiment_2_draw_picture(result_df_2, style_map, './File/PDF/Experiment_2_SQR_Corr_Analysis.pdf')  # 实验2绘图
-	experiment_1_draw_picture(result_df_3, style_map, './File/PDF/Experiment_3_SQR_Stability_Analysis.pdf')  # 实验3绘图
+	# experiment_1_draw_picture(result_df_1, style_map, './File/PDF/Experiment_1_F2_Score_vs_Attack_Ratio.pdf')  # 实验1绘图
+	# experiment_2_draw_picture(result_df_2, style_map, './File/PDF/Experiment_2_SQR_Corr_Analysis.pdf')  # 实验2绘图
+	# experiment_1_draw_picture(result_df_3, style_map, './File/PDF/Experiment_3_SQR_Stability_Analysis.pdf')  # 实验3绘图
 	Experiment_4_Ratio_Estimates(processed_data_non_LDP, result_df_4)
 	
 	elapsed_seconds = time.time() - start_time
