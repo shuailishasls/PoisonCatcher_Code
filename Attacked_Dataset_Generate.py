@@ -135,9 +135,11 @@ def generate_attacked_df(epsilon, discrete_attrs, attack_countries, selected_att
 					current_attacked_sqr['date'] = date_obj
 					current_attacked_sqr['Fault Tolerance'] = alpha_df[feature].values[0]
 					temp_LDP_sqr = pd.concat([temp_LDP_sqr, current_attacked_sqr], ignore_index=True)
+					
+					wait_attack_ds[['country', feature, 'attacked']].to_csv(f'./File/Attacked_Dataset_User/{str(feature)}+{str(date_obj)}+{str(attacked_mode)}+{str(country_attacked_ratio[i])}.csv', index=False)
 				
 				temp_LDP_sqr['attack_ratio'] = true_attack_ratio[i]
 				temp_LDP_sqr['attacked_mode'] = attacked_mode
 				new_LDP_sqr = pd.concat([new_LDP_sqr, temp_LDP_sqr], ignore_index=True)
-		
+
 		new_LDP_sqr.to_csv(f'./File/Attacked_Dataset/{str(feature)}.csv', index=False)
