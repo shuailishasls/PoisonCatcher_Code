@@ -67,8 +67,12 @@ def calculate_features(original, attacked, participants, sampling_rate=0.1, samp
 			final_features.append(col_features)
 		
 		# 按列将 final_features 值赋予 result.iloc[selected_indices, 1:-1] 行每个元素
+		# result.loc[result['country'].isin(sampled_data), result.columns[1:-1]] += final_features
+		# 转换相关列的数据类型为 float64
+		result[result.columns[1:-1]] = result[result.columns[1:-1]].astype('float64')
+		# 执行赋值操作
 		result.loc[result['country'].isin(sampled_data), result.columns[1:-1]] += final_features
-
+	
 	return result
 
 
@@ -97,13 +101,7 @@ def train_model(df):
 	# 计算 F2 分数
 	f2_score = fbeta_score(y_test, rf_y_pred, beta=2, average='weighted')
 	
-	recall = recall_score(y_test, rf_y_pred, average='weighted')
-	tn = np.sum((y_test == 0) & (rf_y_pred == 0))
-	fp = np.sum((y_test == 0) & (rf_y_pred == 1))
-	specificity = tn / (tn + fp)
-	g_mean = np.sqrt(recall * specificity)  # 计算 G-mean
-	
-	return f2_score, g_mean
+	return f2_score
 
 
 def process_csv_files(folder_path_in, folder_path_out):
@@ -129,7 +127,7 @@ def process_csv_files(folder_path_in, folder_path_out):
 			
 			# 提取第二列数据，将列名改为时间
 			grouped_data[key]['time_data'][time_info] = df.iloc[:, 1]
-
+	
 	for (feature_name, attack_mode, attack_degree), data in grouped_data.items():
 		new_df = pd.DataFrame(data['country'])
 		time_df = pd.DataFrame(data['time_data'])
@@ -173,7 +171,7 @@ def Identify_Attacked_Data(folder_path, history_ds):
 	results = []
 	folder_path_out = './File/Attacked_Dataset_User_Time/'
 	
-	# process_csv_files(folder_path, folder_path_out)
+	process_csv_files(folder_path, folder_path_out)
 	
 	feature_data = process_clean_files(history_ds, './File/Divide_data_by_time', folder_path_out)
 	for feature, data in feature_data.items():
@@ -183,10 +181,10 @@ def Identify_Attacked_Data(folder_path, history_ds):
 			if attacked_feature == feature and float(attack_ratio) != 0:
 				# 构建特征矩阵
 				df = calculate_features(data, pd.read_csv(file_path), data['country'].unique(), sampling_rate)
-				f2_score, g_mean = train_model(df)
-				results.append([attacked_feature, attack_mode, attack_ratio, f2_score, g_mean])
-
-	result_df = pd.DataFrame(results, columns=['attacked_feature', 'attacked_mode', 'attack_ratio', 'F2 score', 'g_mean'])
+				f2_score = train_model(df)
+				results.append([attacked_feature, attack_mode, attack_ratio, f2_score])
+	
+	result_df = pd.DataFrame(results, columns=['attacked_feature', 'attacked_mode', 'attack_ratio', 'F2 score'])
 	
 	return result_df
 
@@ -201,10 +199,10 @@ def Identify_Attacked_Data_normal(folder_path):
 				
 				file_name = os.path.basename(file_path)
 				attacked_feature, attack_mode, attack_ratio = file_name.replace('.csv', '').split('+')
-				f2_score, g_mean = train_model(pd.read_csv(file_path))
-				results.append([attacked_feature, attack_mode, attack_ratio, f2_score, g_mean])
+				f2_score = train_model(pd.read_csv(file_path))
+				results.append([attacked_feature, attack_mode, attack_ratio, f2_score])
 	
 	# 创建结果 DataFrame
-	result_df = pd.DataFrame(results, columns=['attacked_feature', 'attacked_mode', 'attack_ratio', 'F2 score', 'g_mean'])
+	result_df = pd.DataFrame(results, columns=['attacked_feature', 'attacked_mode', 'attack_ratio', 'F2 score'])
 	
 	return result_df
