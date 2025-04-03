@@ -21,6 +21,7 @@ def DIPA(ldp_protocol, domain, origin_LDP_data, epsilon, ture_df_copy):
 		# 找出满足个人域中离频数最高点最远的元素
 		user_domain = ture_df_copy.unique().tolist()
 		attack_result = max([d for d in user_domain if d in domain], key=lambda x: domain.index(x))
+		
 		for i, _ in enumerate(ture_df_copy):
 			while True:
 				temp_data = RDP.grr_mechanism(attack_result, domain, epsilon)
@@ -47,7 +48,7 @@ def DPPA(true_value, origin_data, ldp_protocol, domain=None):
 	Returns:
 		dict: Modified parameters.
 	"""
-	
+	# 随机范围越小，生成的epsilon方差越小
 	random_numbers = [random.randint(1, 1000) for _ in range(len(true_value))]
 	epsilon_list = [num / sum(random_numbers) * len(true_value) for num in random_numbers]
 	disturb_value = []
