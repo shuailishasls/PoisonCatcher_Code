@@ -31,20 +31,20 @@ Once the paper is officially published, we will update the final citation inform
 
 我们将 **F2 分数** 作为主要的性能评估指标。F2 分数能够综合考量模型的精确率和召回率，尤其侧重于高召回率（即能否尽可能多地找出毒化数据项），这对于数据清洗和防御至关重要。
 
-实验对比了 PoisonCatcher 与多种现有或常用的基线方法，包括参考自文献 [12, 20] 的 **基于 FP-Growth 的虚假用户检测 (DETECT)[20]**、**基于双向采集方法的LDPGuard**[20]，以及 **由8位权威机构信息安全专家组成的专家评估小组（包括3个基于人工智能的评估模型）**。通过与这些基线方法的定量对比，旨在有力地论证 PoisonCatcher 在毒化数据识别方面的显著优势。
+实验对比了 PoisonCatcher 与多种现有或常用的基线方法，包括：**基于 FP-Growth 的虚假用户检测 (DETECT)[20]**、**基于双向采集方法LDPGuard方法**[20]，以及 **由8位权威机构信息安全专家组成的专家评估小组（包括3个基于人工智能的评估模型）进行的人工评估**。通过与这些基线方法的定量对比，旨在有力地论证 PoisonCatcher 在毒化程度估计方面的显著优势。
 
 所有实验均严格控制随机种子，以保证结果的完全可复现性。本项目的全部实验代码、数据处理脚本及合成数据生成工具均已开源，旨在提升研究的透明度并便于社区进行独立的验证和进一步研究。
 
 ## PoisonCatcher 项目结构
 
-- Attack_Simulation_Four.py // 攻击过程模拟，请见攻击过程部分
+- Attack_Simulation_Four.py // 攻击过程模拟
 - Attacked_Dataset_Generate.py // 攻击数据生成
 - Attribute_Correlation_Detector.py // 属性相关性检测器
 - Part1_Temporal_Similarity_Detector.py // 时序相似性检测器
 - Experiment_Result.py // 完整实验流程
-- Real_Data_Process.py  //对真实数据的预处理
+- Real_Data_Process.py  // 对真实数据的预处理
 - Statistical.py  // 对LDP数据进行统计查询
-- Experiment_num // 论文中相应的实验
+- Experiment_[num] // 论文中相应的实验
 
 ---
 
@@ -55,4 +55,4 @@ Once the paper is officially published, we will update the final citation inform
   - Attacked_Dataset  // （文件夹）生成的攻击数据
   - Human_Expert_Review_Scale // （文件夹）由8位权威机构信息安全专家组成的专家评估小组（包括3个基于人工智能的评估模型）数据
   - pdf // （文件夹）论文中相应的实验结果（图片）
-  - Experiment_num // 论文中相应的实验数据
+  - Experiment_[num] // 论文中相应的实验数据
